@@ -2,53 +2,70 @@
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-DIALOG="zenity"
-if ! command -v zenity >/dev/null 2>&1; then
-    if command -v kdialog >/dev/null 2>&1; then
-        DIALOG="kdialog"
-    else
-        echo "Error: zenity or kdialog is required to run Rostam Extractor."
-        exit 1
-    fi
+DIALOG="terminal"
+if command -v zenity >/dev/null 2>&1; then
+    DIALOG="zenity"
+elif command -v kdialog >/dev/null 2>&1; then
+    DIALOG="kdialog"
 fi
 
 show_info() {
     if [ "$DIALOG" = "zenity" ]; then
         zenity --info --title="$1" --text="$2"
-    else
+    elif [ "$DIALOG" = "kdialog" ]; then
         kdialog --title "$1" --msgbox "$2"
+    else
+        echo
+        echo "== $1 =="
+        echo "$2"
+        echo
     fi
 }
 
 show_error() {
     if [ "$DIALOG" = "zenity" ]; then
         zenity --error --title="$1" --text="$2"
-    else
+    elif [ "$DIALOG" = "kdialog" ]; then
         kdialog --title "$1" --error "$2"
+    else
+        echo
+        echo "ERROR: $1"
+        echo "$2"
+        echo
     fi
 }
 
 select_file() {
     if [ "$DIALOG" = "zenity" ]; then
         zenity --file-selection --title="$1"
-    else
+    elif [ "$DIALOG" = "kdialog" ]; then
         kdialog --title "$1" --getopenfilename "$DIR"
+    else
+        echo "$1" >&2
+        printf "Path to input .ts file: " >&2
+        read -r REPLY
+        echo "$REPLY"
     fi
 }
 
 select_directory() {
     if [ "$DIALOG" = "zenity" ]; then
         zenity --file-selection --directory --title="$1"
-    else
+    elif [ "$DIALOG" = "kdialog" ]; then
         kdialog --title "$1" --getexistingdirectory "$DIR"
+    else
+        echo "$1" >&2
+        printf "Folder for extracted files: " >&2
+        read -r REPLY
+        echo "$REPLY"
     fi
 }
 
-run_progress() {
+run_extractor() {
     if [ "$DIALOG" = "zenity" ]; then
-        zenity --progress --title="Rostam Extractor" --text="Starting extraction..." --percentage=0 --auto-close --auto-kill
+        "$DIR/rostam-core" "$INPUT_FILE" "$OUTPUT_DIR" | zenity --progress --title="Rostam Extractor" --text="Starting extraction..." --percentage=0 --auto-close --auto-kill
     else
-        kdialog --title "Rostam Extractor" --progressbar "Starting extraction..." 100
+        "$DIR/rostam-core" "$INPUT_FILE" "$OUTPUT_DIR"
     fi
 }
 
@@ -60,7 +77,7 @@ if [ ! -x "$DIR/rostam-core" ]; then
             exit 1
         fi
     else
-        show_error "Missing g++" "The extraction engine must be compiled first. Please install g++ and run this again."
+        show_error "Missing Extraction Engine" "rostam-core was not found, and g++ is not available to build it. Put the compiled rostam-core binary next to start.sh and run this again."
         exit 1
     fi
 fi
@@ -75,9 +92,11 @@ if [ -z "$OUTPUT_DIR" ]; then
     exit 0
 fi
 
-if "$DIR/rostam-core" "$INPUT_FILE" "$OUTPUT_DIR" | run_progress; then
+if run_extractor; then
     show_info "Success" "Extraction Complete!"
-    xdg-open "$OUTPUT_DIR" >/dev/null 2>&1 &
+    if command -v xdg-open >/dev/null 2>&1; then
+        xdg-open "$OUTPUT_DIR" >/dev/null 2>&1 &
+    fi
 else
     show_error "Extraction Failed" "The extraction did not complete successfully."
     exit 1
