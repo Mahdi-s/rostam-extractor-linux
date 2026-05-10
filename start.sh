@@ -9,6 +9,11 @@ elif command -v kdialog >/dev/null 2>&1; then
     DIALOG="kdialog"
 fi
 
+print_usage() {
+    echo "Usage: $0 [--pid PID]"
+    echo "       $0 [-p PID]"
+}
+
 show_info() {
     if [ "$DIALOG" = "zenity" ]; then
         zenity --info --title="$1" --text="$2"
@@ -63,15 +68,54 @@ select_directory() {
 
 run_extractor() {
     if [ "$DIALOG" = "zenity" ]; then
-        "$DIR/rostam-core" "$INPUT_FILE" "$OUTPUT_DIR" | zenity --progress --title="Rostam Extractor" --text="Starting extraction..." --percentage=0 --auto-close --auto-kill
+        "$DIR/rostam-core" "${PID_ARGS[@]}" "$INPUT_FILE" "$OUTPUT_DIR" | zenity --progress --title="Rostam Extractor" --text="Starting extraction..." --percentage=0 --auto-close --auto-kill
     else
-        "$DIR/rostam-core" "$INPUT_FILE" "$OUTPUT_DIR"
+        "$DIR/rostam-core" "${PID_ARGS[@]}" "$INPUT_FILE" "$OUTPUT_DIR"
     fi
 }
 
+PID_ARGS=()
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --pid|-p)
+            if [ -z "$2" ]; then
+                show_error "Invalid PID" "Missing PID value."
+                print_usage
+                exit 1
+            fi
+            PID_ARGS=("$1" "$2")
+            shift 2
+            ;;
+        --pid=*)
+            PID_ARGS=("$1")
+            shift
+            ;;
+        --help|-h)
+            print_usage
+            exit 0
+            ;;
+        *)
+            show_error "Unknown Argument" "Unknown argument: $1"
+            print_usage
+            exit 1
+            ;;
+    esac
+done
+
+NEEDS_BUILD=0
 if [ ! -x "$DIR/rostam-core" ]; then
+    NEEDS_BUILD=1
+elif [ "$DIR/main.cpp" -nt "$DIR/rostam-core" ]; then
+    NEEDS_BUILD=1
+elif [ "$DIR/rostam_stream.hpp" -nt "$DIR/rostam-core" ]; then
+    NEEDS_BUILD=1
+elif [ "$DIR/rostam_utils.hpp" -nt "$DIR/rostam-core" ]; then
+    NEEDS_BUILD=1
+fi
+
+if [ "$NEEDS_BUILD" = "1" ]; then
     if command -v g++ >/dev/null 2>&1; then
-        show_info "Rostam Extractor" "First time setup: Compiling the extraction engine..."
+        show_info "Rostam Extractor" "Compiling the extraction engine..."
         if ! g++ -O3 -std=c++17 "$DIR/main.cpp" -o "$DIR/rostam-core"; then
             show_error "Compile Failed" "Could not compile the extraction engine."
             exit 1

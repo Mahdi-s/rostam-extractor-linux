@@ -1,5 +1,31 @@
 #include "rostam_stream.hpp"
 
+void print_usage(const char* program) {
+    std::cerr << "Usage: " << program << " [--pid PID] <input.ts> <output_dir>\n";
+    std::cerr << "       " << program << " [-p PID] <input.ts> <output_dir>\n";
+}
+
+bool parse_pid_value(const std::string& text, uint16_t& pid) {
+    if (text.empty()) {
+        return false;
+    }
+
+    uint64_t value = 0;
+    for (char ch : text) {
+        if (ch < '0' || ch > '9') {
+            return false;
+        }
+
+        value = (value * 10) + static_cast<uint64_t>(ch - '0');
+        if (value > 8191) {
+            return false;
+        }
+    }
+
+    pid = static_cast<uint16_t>(value);
+    return true;
+}
+
 int skip_pes_and_ac3_headers(const uint8_t* packet, int offset) {
     if (offset + 8 >= TsConstants::TS_PACKET_SIZE) {
         return offset;
@@ -33,13 +59,42 @@ int skip_pes_and_ac3_headers(const uint8_t* packet, int offset) {
 }
 
 int main(int argc, char** argv) {
-    if (argc != 3) {
-        std::cerr << "Usage: " << argv[0] << " <input.ts> <output_dir>\n";
+    uint16_t target_pid = static_cast<uint16_t>(TsConstants::DEFAULT_PID);
+    std::vector<std::string> positional_args;
+
+    for (int i = 1; i < argc; ++i) {
+        const std::string arg = argv[i];
+
+        if (arg == "--help" || arg == "-h") {
+            print_usage(argv[0]);
+            return 0;
+        }
+
+        if (arg == "--pid" || arg == "-p") {
+            if (i + 1 >= argc || !parse_pid_value(argv[i + 1], target_pid)) {
+                std::cerr << "Invalid PID. Use a decimal value from 0 to 8191.\n";
+                print_usage(argv[0]);
+                return 1;
+            }
+            ++i;
+        } else if (arg.rfind("--pid=", 0) == 0) {
+            if (!parse_pid_value(arg.substr(6), target_pid)) {
+                std::cerr << "Invalid PID. Use a decimal value from 0 to 8191.\n";
+                print_usage(argv[0]);
+                return 1;
+            }
+        } else {
+            positional_args.push_back(arg);
+        }
+    }
+
+    if (positional_args.size() != 2) {
+        print_usage(argv[0]);
         return 1;
     }
 
-    const std::filesystem::path input_path = argv[1];
-    const std::filesystem::path output_dir = argv[2];
+    const std::filesystem::path input_path = positional_args[0];
+    const std::filesystem::path output_dir = positional_args[1];
 
     std::filesystem::create_directories(output_dir);
     const uint64_t total_file_size = std::filesystem::file_size(input_path);
@@ -80,7 +135,7 @@ int main(int argc, char** argv) {
             }
 
             const uint16_t pid = static_cast<uint16_t>(((packet[1] & 0x1F) << 8) | packet[2]);
-            if (pid != TsConstants::DEFAULT_PID) {
+            if (pid != target_pid) {
                 continue;
             }
 
