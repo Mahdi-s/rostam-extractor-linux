@@ -111,6 +111,8 @@ elif [ "$DIR/rostam_stream.hpp" -nt "$DIR/rostam-core" ]; then
     NEEDS_BUILD=1
 elif [ "$DIR/rostam_utils.hpp" -nt "$DIR/rostam-core" ]; then
     NEEDS_BUILD=1
+elif ! "$DIR/rostam-core" --help 2>&1 | grep -q -- "--pid"; then
+    NEEDS_BUILD=1
 fi
 
 if [ "$NEEDS_BUILD" = "1" ]; then
